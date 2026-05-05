@@ -16,7 +16,29 @@ class SessionStateStore:
         self._states: dict[str, SessionRuntimeState] = {}
 
     def get(self, session: SessionContext) -> SessionRuntimeState:
-        return self._states.setdefault(session.session_key, SessionRuntimeState())
+        """获取会话状态，优先加载用户独立设置"""
+        state = self._states.setdefault(session.session_key, SessionRuntimeState())
+
+        # ==================== 新增：用户独立设置优先 ====================
+        user_id = None
+        if hasattr(session, 'user_id') and session.user_id:
+            user_id = str(session.user_id)
+        elif hasattr(session, 'sender') and session.sender and hasattr(session.sender, 'user_id'):
+            user_id = str(session.sender.user_id)
+
+        if user_id:
+            user_data = user_settings.get(user_id)
+            if user_data:
+                # 覆盖用户独立设置（只覆盖已实现的三项）
+                if user_data.get("selected_model"):
+                    state.selected_model = user_data["selected_model"]
+                if user_data.get("selected_artist_index") is not None:
+                    state.selected_artist_index = user_data["selected_artist_index"]
+                if user_data.get("selected_size"):
+                    state.selected_size = user_data["selected_size"]
+        # ============================================================
+
+        return state
 
     def track_image(
         self,
