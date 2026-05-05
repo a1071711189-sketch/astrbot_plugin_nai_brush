@@ -414,3 +414,34 @@ def _normalize_tag_list(value: Any) -> list[str]:
         seen.add(key)
         out.append(stripped)
     return out
+def strip_image_metadata(image_input: str) -> str:
+    """
+    清除 NovelAI 返回图片的 metadata（prompt、参数等），并转为干净的 JPG
+    """
+    try:
+        # 1. 提取 base64 数据
+        if image_input.startswith("base64://"):
+            b64_data = image_input[9:]
+        elif image_input.startswith("data:image"):
+            _, b64_data = image_input.split(",", 1)
+        else:
+            b64_data = image_input
+
+        # 2. 解码为图片
+        img_bytes = base64.b64decode(b64_data)
+        img = Image.open(io.BytesIO(img_bytes))
+
+        # 3. 转 RGB（去掉透明通道，JPG 不支持）
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        # 4. 保存为干净的 JPG
+        output = io.BytesIO()
+        img.save(output, format="JPEG", quality=93)   # 93 是质量和体积的较好平衡
+        new_b64 = base64.b64encode(output.getvalue()).decode("utf-8")
+
+        return f"base64://{new_b64}"
+
+    except Exception as e:
+        logger.warning(f"[nai_pic] 清除图片 metadata 失败: {e}")
+        return image_input  # 失败时返回原图，不中断流程
