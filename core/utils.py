@@ -6,7 +6,8 @@ import base64
 import json
 import re
 from typing import Any
-
+from PIL import Image
+import io
 
 _COUNT_RE = re.compile(
     r"^(?:solo|\d+girls|\d+boys|\d+people|1girl|1boy)$",
