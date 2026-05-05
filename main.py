@@ -264,6 +264,12 @@ class Main(Star):
                 await send_text_message(event, f"❌ 未在配置中声明该模型：{model_name}")
                 return
             self.states.get(session).selected_model = model_name
+            # === 保存用户独立设置 ===
+            user_id = str(getattr(event.sender, "user_id", ""))
+            if user_id:
+                from .core.user_settings import user_settings
+                user_settings.set(user_id, "selected_model", model_name)
+            # =========================
             await send_text_message(
                 event,
                 f"✅ 当前会话已切换模型为：{model_display_name(model_name)}",
@@ -323,6 +329,12 @@ class Main(Star):
                 await send_text_message(event, f"❌ 编号超出范围，当前共有 {len(presets)} 个预设。")
                 return
             state.selected_artist_index = index
+            # === 保存用户独立设置 ===
+            user_id = str(getattr(event.sender, "user_id", ""))
+            if user_id:
+                from .core.user_settings import user_settings
+                user_settings.set(user_id, "selected_artist_index", index)
+            # =========================
             await send_text_message(
                 event,
                 f"✅ 已切换到画师预设 #{index}：{presets[index - 1].name}",
@@ -350,6 +362,12 @@ class Main(Star):
                 await send_text_message(event, "❌ 尺寸不能为空。")
                 return
             self.states.get(session).selected_size = normalized
+            # === 保存用户独立设置 ===
+            user_id = str(getattr(event.sender, "user_id", ""))
+            if user_id:
+                from .core.user_settings import user_settings
+                user_settings.set(user_id, "selected_size", normalized)
+            # =========================
             await send_text_message(event, f"✅ 已切换尺寸为：{size_display_name(normalized)}")
             return
 
