@@ -7,7 +7,7 @@ from collections import deque
 from typing import Iterable
 
 from .models import RecentImageRecord, SessionContext, SessionRuntimeState
-
+from .user_settings import user_settings
 
 class SessionStateStore:
     """In-memory runtime state. Session overrides are intentionally ephemeral."""
