@@ -265,11 +265,14 @@ class Main(Star):
                 return
             self.states.get(session).selected_model = model_name
             # === 保存用户独立设置 ===
-            user_id = str(getattr(event.sender, "user_id", ""))
-            if user_id:
-                from .core.user_settings import user_settings
-                user_settings.set(user_id, "selected_model", model_name)
-            # =========================
+            user_id = ""
+            if hasattr(event, "user_id") and event.user_id:
+                user_id = str(event.user_id)
+            elif hasattr(event, "sender_id") and event.sender_id:
+                user_id = str(event.sender_id)
+            elif hasattr(event, "get_sender_id") and callable(event.get_sender_id):
+                user_id = str(event.get_sender_id() or "")
+            # ======================================
             await send_text_message(
                 event,
                 f"✅ 当前会话已切换模型为：{model_display_name(model_name)}",
@@ -330,11 +333,14 @@ class Main(Star):
                 return
             state.selected_artist_index = index
             # === 保存用户独立设置 ===
-            user_id = str(getattr(event.sender, "user_id", ""))
-            if user_id:
-                from .core.user_settings import user_settings
-                user_settings.set(user_id, "selected_artist_index", index)
-            # =========================
+            user_id = ""
+            if hasattr(event, "user_id") and event.user_id:
+                user_id = str(event.user_id)
+            elif hasattr(event, "sender_id") and event.sender_id:
+                user_id = str(event.sender_id)
+            elif hasattr(event, "get_sender_id") and callable(event.get_sender_id):
+                user_id = str(event.get_sender_id() or "")
+            # ======================================
             await send_text_message(
                 event,
                 f"✅ 已切换到画师预设 #{index}：{presets[index - 1].name}",
@@ -363,11 +369,14 @@ class Main(Star):
                 return
             self.states.get(session).selected_size = normalized
             # === 保存用户独立设置 ===
-            user_id = str(getattr(event.sender, "user_id", ""))
-            if user_id:
-                from .core.user_settings import user_settings
-                user_settings.set(user_id, "selected_size", normalized)
-            # =========================
+            user_id = ""
+            if hasattr(event, "user_id") and event.user_id:
+                user_id = str(event.user_id)
+            elif hasattr(event, "sender_id") and event.sender_id:
+                user_id = str(event.sender_id)
+            elif hasattr(event, "get_sender_id") and callable(event.get_sender_id):
+                user_id = str(event.get_sender_id() or "")
+            # ======================================
             await send_text_message(event, f"✅ 已切换尺寸为：{size_display_name(normalized)}")
             return
 
