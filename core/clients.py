@@ -108,7 +108,7 @@ class NaiWebClient:
             
             if any(keyword in error_str for keyword in sensitive_keywords):
                 logger.error("NAI网络请求失败（敏感信息已隐藏）")
-                return False, "生成失败：NovelAI服务暂时不可用，请稍后再试。"
+                return False, "NovelAI服务暂时不可用，请稍后再试。"
             
             # 其他网络错误也进行简化处理
             logger.error(f"NAI请求失败: {error_str[:100]}...")  # 限制日志长度
