@@ -93,7 +93,26 @@ class NaiWebClient:
             response = await self._client.get(url, params=params)
             response.raise_for_status()
         except httpx.HTTPError as exc:
-            return False, f"网络请求失败: {exc}"
+            error_str = str(exc)
+            
+            # ==================== 敏感信息过滤 ====================
+            sensitive_keywords = [
+                "std.loliyc.com", 
+                "token=", 
+                "token%3D", 
+                "api_key",
+                "generate?",
+                "502 Bad Gateway",
+                "Server error"
+            ]
+            
+            if any(keyword in error_str for keyword in sensitive_keywords):
+                logger.error("NAI网络请求失败（敏感信息已隐藏）")
+                return False, "生成失败：NovelAI服务暂时不可用，请稍后再试。"
+            
+            # 其他网络错误也进行简化处理
+            logger.error(f"NAI请求失败: {error_str[:100]}...")  # 限制日志长度
+            return False, "生成失败：网络请求异常，请稍后再试。"
 
         content_type = response.headers.get("content-type", "")
         if "application/json" in content_type:
