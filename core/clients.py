@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from collections import Counter
+import json
 import re
 from typing import Any
 
@@ -41,6 +42,7 @@ class NaiWebClient:
     ) -> tuple[bool, str]:
         base_url = str(model_config.get("base_url") or "").rstrip("/")
         if not base_url:
+            logger.error("[nai_pic] generate_image: base_url 未配置")
             return False, "base_url 未配置"
 
         endpoint = str(model_config.get("nai_endpoint") or DEFAULT_NAI_ENDPOINT)
@@ -113,27 +115,49 @@ class NaiWebClient:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
+        # ── 调试日志 ──
+        logger.info(f"[nai_pic] ======== 生图请求 ========")
+        logger.info(f"[nai_pic] URL: {url}")
+        masked_token = f"{token[:8]}...{token[-4:]}" if token and len(token) > 12 else (token or "(未设置)")
+        logger.info(f"[nai_pic] Token: {masked_token}")
+        logger.info(f"[nai_pic] Model: {model_name}")
+        logger.info(f"[nai_pic] Size: {width}x{height}")
+        logger.info(f"[nai_pic] Prompt: {full_prompt[:200]}{'...' if len(full_prompt) > 200 else ''}")
+        logger.info(f"[nai_pic] Negative: {negative[:200]}{'...' if len(negative) > 200 else ''}")
+        logger.info(f"[nai_pic] Sampler: {sampler}, Steps: {steps}, Scale: {scale}")
+        logger.info(f"[nai_pic] Request Body: {json.dumps(body, ensure_ascii=False)[:500]}")
+
         try:
             response = await self._client.post(url, json=body, headers=headers)
+            logger.info(f"[nai_pic] 响应状态码: {response.status_code}")
+            logger.info(f"[nai_pic] 响应 Content-Type: {response.headers.get('content-type', 'unknown')}")
+            logger.info(f"[nai_pic] 响应体前500字符: {response.text[:500]}")
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"[nai_pic] HTTP 错误: {exc.response.status_code}, 响应体: {exc.response.text[:500]}")
+            return False, f"网络请求失败:NovelAI服务暂时不可用，请稍后再试。"
         except httpx.HTTPError as exc:
+            logger.error(f"[nai_pic] 网络请求异常: {type(exc).__name__}: {exc}")
             return False, f"网络请求失败:NovelAI服务暂时不可用，请稍后再试。"
 
         content_type = response.headers.get("content-type", "")
         if "application/json" in content_type:
             try:
                 data = response.json()
-            except Exception:
+            except Exception as exc:
+                logger.error(f"[nai_pic] JSON 解析失败: {exc}, 原始内容: {response.text[:500]}")
                 data = {}
 
             if "data" in data:
                 inner = data["data"]
                 if isinstance(inner, str) and inner.strip():
+                    logger.info(f"[nai_pic] 获取到图片 (data 字符串, {len(inner)} 字符)")
                     return True, inner.strip()
                 if isinstance(inner, dict):
                     for key in ("image", "url", "image_url"):
                         value = inner.get(key)
                         if isinstance(value, str) and value.strip():
+                            logger.info(f"[nai_pic] 获取到图片 (data.{key}, {len(value)} 字符)")
                             return True, value.strip()
                 if isinstance(inner, list) and inner:
                     first = inner[0]
@@ -141,17 +165,23 @@ class NaiWebClient:
                         for key in ("image", "url", "image_url"):
                             value = first.get(key)
                             if isinstance(value, str) and value.strip():
+                                logger.info(f"[nai_pic] 获取到图片 (data[0].{key}, {len(value)} 字符)")
                                 return True, value.strip()
                     elif isinstance(first, str):
+                        logger.info(f"[nai_pic] 获取到图片 (data[0] 字符串, {len(first)} 字符)")
                         return True, first
 
             for key in ("image", "url", "image_url"):
                 value = data.get(key)
                 if isinstance(value, str) and value.strip():
+                    logger.info(f"[nai_pic] 获取到图片 (顶层.{key}, {len(value)} 字符)")
                     return True, value.strip()
 
-            return False, str(data.get("message") or data.get("error") or "未返回图片数据")
+            error_msg = str(data.get("message") or data.get("error") or "未返回图片数据")
+            logger.error(f"[nai_pic] 响应中未找到图片数据，完整响应: {json.dumps(data, ensure_ascii=False)[:800]}")
+            return False, error_msg
 
+        logger.info(f"[nai_pic] 非 JSON 响应，按二进制图片处理 ({len(response.content)} bytes)")
         return True, base64.b64encode(response.content).decode("utf-8")
 
 
