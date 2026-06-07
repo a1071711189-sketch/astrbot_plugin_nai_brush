@@ -49,48 +49,72 @@ class NaiWebClient:
 
         prompt_add = str(model_config.get("custom_prompt_add") or "").strip()
         full_prompt = f"{prompt_add}, {prompt}" if prompt_add else prompt
+
+        artist_prompt = str(model_config.get("nai_artist_prompt") or "").strip()
+        if artist_prompt:
+            full_prompt = f"{artist_prompt}, {full_prompt}"
+
         token = str(model_config.get("api_key") or "").strip()
         if token.lower().startswith("bearer "):
             token = token.split(" ", 1)[1]
 
-        params: dict[str, Any] = {
-            "tag": full_prompt,
-            "model": model_config.get("default_model", "nai-diffusion-4-5-full"),
-        }
-        if token:
-            params["token"] = token
-        if artist_prompt := str(model_config.get("nai_artist_prompt") or "").strip():
-            params["artist"] = artist_prompt
-        if negative := str(model_config.get("negative_prompt_add") or "").strip():
-            params["negative"] = negative
-        if sampler := str(model_config.get("sampler") or "").strip():
-            params["sampler"] = sampler
-        if (steps := model_config.get("num_inference_steps")) is not None:
-            params["steps"] = steps
-        if (scale := model_config.get("guidance_scale")) is not None:
-            params["scale"] = scale
-        if (cfg_value := model_config.get("nai_cfg")) is not None:
-            params["cfg"] = cfg_value
-        if noise_schedule := str(
-            model_config.get("noise_schedule") or model_config.get("nai_noise_schedule") or ""
-        ).strip():
-            params["noise_schedule"] = noise_schedule
-        if (nocache := model_config.get("nai_nocache")) is not None:
-            params["nocache"] = nocache
+        final_size = str(model_config.get("nai_size") or size or "832x1216").strip()
+        try:
+            width_str, height_str = final_size.split("x")
+            width = int(width_str)
+            height = int(height_str)
+        except (ValueError, AttributeError):
+            width, height = 832, 1216
 
-        final_size = str(model_config.get("nai_size") or size or "").strip()
-        if final_size:
-            params["size"] = final_size
+        negative = str(model_config.get("negative_prompt_add") or "").strip()
+        sampler = str(model_config.get("sampler") or "k_euler_ancestral").strip()
+        steps = model_config.get("num_inference_steps", 28)
+
+        cfg_value = model_config.get("nai_cfg")
+        if cfg_value is not None and float(cfg_value) != 0:
+            scale = float(cfg_value)
+        else:
+            scale = float(model_config.get("guidance_scale", 5.0) or 5.0)
+
+        noise_schedule = str(
+            model_config.get("noise_schedule") or model_config.get("nai_noise_schedule") or "karras"
+        ).strip()
+
+        model_name = model_config.get("default_model", "nai-diffusion-4-5-full")
+
+        parameters: dict[str, Any] = {
+            "width": width,
+            "height": height,
+            "sampler": sampler,
+            "steps": steps,
+            "scale": scale,
+            "n_samples": 1,
+        }
+        if negative:
+            parameters["negative_prompt"] = negative
+        if noise_schedule:
+            parameters["noise_schedule"] = noise_schedule
 
         extra_params = model_config.get("nai_extra_params") or {}
         if isinstance(extra_params, dict):
             for key, value in extra_params.items():
                 if value not in (None, ""):
-                    params[str(key)] = value
+                    parameters[str(key)] = value
+
+        body: dict[str, Any] = {
+            "input": full_prompt,
+            "model": model_name,
+            "action": "generate",
+            "parameters": parameters,
+        }
 
         url = f"{base_url}{endpoint}"
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
         try:
-            response = await self._client.get(url, params=params)
+            response = await self._client.post(url, json=body, headers=headers)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             return False, f"网络请求失败:NovelAI服务暂时不可用，请稍后再试。"
@@ -101,10 +125,31 @@ class NaiWebClient:
                 data = response.json()
             except Exception:
                 data = {}
-            for key in ("url", "image_url", "image", "data"):
+
+            if "data" in data:
+                inner = data["data"]
+                if isinstance(inner, str) and inner.strip():
+                    return True, inner.strip()
+                if isinstance(inner, dict):
+                    for key in ("image", "url", "image_url"):
+                        value = inner.get(key)
+                        if isinstance(value, str) and value.strip():
+                            return True, value.strip()
+                if isinstance(inner, list) and inner:
+                    first = inner[0]
+                    if isinstance(first, dict):
+                        for key in ("image", "url", "image_url"):
+                            value = first.get(key)
+                            if isinstance(value, str) and value.strip():
+                                return True, value.strip()
+                    elif isinstance(first, str):
+                        return True, first
+
+            for key in ("image", "url", "image_url"):
                 value = data.get(key)
                 if isinstance(value, str) and value.strip():
                     return True, value.strip()
+
             return False, str(data.get("message") or data.get("error") or "未返回图片数据")
 
         return True, base64.b64encode(response.content).decode("utf-8")
