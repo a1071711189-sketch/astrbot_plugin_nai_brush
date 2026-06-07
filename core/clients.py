@@ -118,24 +118,25 @@ class NaiWebClient:
 
         # ── 调试日志 ──
         logger.info(f"[nai_pic] ======== 生图请求 ========")
-        logger.info(f"[nai_pic] URL: {url}")
+        logger.info(f"[nai_pic] 完整请求 URL: {url}")
+        logger.info(f"[nai_pic] 请求方法: POST")
         masked_token = f"{token[:8]}...{token[-4:]}" if token and len(token) > 12 else (token or "(未设置)")
         logger.info(f"[nai_pic] Token: {masked_token}")
         logger.info(f"[nai_pic] Model: {model_name}")
         logger.info(f"[nai_pic] Size: {width}x{height}")
-        logger.info(f"[nai_pic] Prompt: {full_prompt[:200]}{'...' if len(full_prompt) > 200 else ''}")
-        logger.info(f"[nai_pic] Negative: {negative[:200]}{'...' if len(negative) > 200 else ''}")
+        logger.info(f"[nai_pic] Prompt: {full_prompt}")
+        logger.info(f"[nai_pic] Negative: {negative}")
         logger.info(f"[nai_pic] Sampler: {sampler}, Steps: {steps}, Scale: {scale}")
-        logger.info(f"[nai_pic] Request Body: {json.dumps(body, ensure_ascii=False)[:500]}")
+        logger.info(f"[nai_pic] 完整 Request Body ({len(json.dumps(body, ensure_ascii=False))} 字符): {json.dumps(body, ensure_ascii=False)}")
 
         try:
             response = await self._client.post(url, json=body, headers=headers)
             logger.info(f"[nai_pic] 响应状态码: {response.status_code}")
             logger.info(f"[nai_pic] 响应 Content-Type: {response.headers.get('content-type', 'unknown')}")
-            logger.info(f"[nai_pic] 响应体前500字符: {response.text[:500]}")
+            logger.info(f"[nai_pic] 完整响应体: {response.text}")
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            logger.error(f"[nai_pic] HTTP 错误: {exc.response.status_code}, 响应体: {exc.response.text[:500]}")
+            logger.error(f"[nai_pic] HTTP 错误: {exc.response.status_code}, 完整响应: {exc.response.text}")
             return False, f"网络请求失败:NovelAI服务暂时不可用，请稍后再试。"
         except httpx.HTTPError as exc:
             logger.error(f"[nai_pic] 网络请求异常: {type(exc).__name__}: {exc}")
@@ -146,7 +147,7 @@ class NaiWebClient:
             try:
                 data = response.json()
             except Exception as exc:
-                logger.error(f"[nai_pic] JSON 解析失败: {exc}, 原始内容: {response.text[:500]}")
+                logger.error(f"[nai_pic] JSON 解析失败: {exc}, 原始内容: {response.text}")
                 data = {}
 
             if "data" in data:
@@ -179,7 +180,7 @@ class NaiWebClient:
                     return True, value.strip()
 
             error_msg = str(data.get("message") or data.get("error") or "未返回图片数据")
-            logger.error(f"[nai_pic] 响应中未找到图片数据，完整响应: {json.dumps(data, ensure_ascii=False)[:800]}")
+            logger.error(f"[nai_pic] 响应中未找到图片数据，完整响应: {json.dumps(data, ensure_ascii=False)}")
             return False, error_msg
 
         logger.info(f"[nai_pic] 非 JSON 响应，按二进制图片处理 ({len(response.content)} bytes)")
