@@ -6,8 +6,8 @@
       "base_url": {
         "type": "string",
         "description": "NAI Web API 基础地址",
-        "hint": "NovelAI 兼容的 Web API 基础地址，如自建反代则填写反代地址",
-        "default": "https://std.loliyc.com",
+        "hint": "NovelAI 官方 API 地址，如自建反代则填写反代地址",
+        "default": "https://image.novelai.net",
         "obvious_hint": true
       },
       "api_key": {
@@ -19,8 +19,8 @@
       "nai_endpoint": {
         "type": "string",
         "description": "接口路径",
-        "hint": "API 基础地址后面的路径，默认 /generate，一般无需修改",
-        "default": "/generate"
+        "hint": "API 基础地址后面的路径，默认 /ai/generate-image，一般无需修改",
+        "default": "/ai/generate-image"
       },
       "default_model": {
         "type": "string",
