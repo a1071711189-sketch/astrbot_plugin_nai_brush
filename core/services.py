@@ -367,9 +367,11 @@ class ImageService:
         if not image_input:
             return False, "无法识别接口返回的图片格式"
 
-        # === 新增：清除 metadata ===
+        # === 清除 metadata ===
         from .utils import strip_image_metadata
         image_input = strip_image_metadata(image_input)
+        if not image_input:
+            return False, "图片元数据清除失败，已阻止发送"
         # ========================
         
         message_id = await send_image_message(event, image_input)

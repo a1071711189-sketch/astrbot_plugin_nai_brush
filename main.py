@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from typing import Any
 
 from astrbot.api import AstrBotConfig
@@ -93,6 +94,11 @@ class Main(Star):
         if not tags:
             await send_text_message(event, "用法：/nai tag 1girl, hatsune miku, smile")
             return
+        await send_text_message(event, random.choice([
+            "了解了解～把你的想象交给我吧，我会把它变成现实的！",
+            "嘿嘿～这个委托听起来很有趣！数据加载中……生成启动！",
+            "指令确认！爱丽数码绘画模式全开，马上为你调配最棒的色彩！",
+        ]))
         success, result = await self.image_service.generate_and_send(event, session, tags)
         if not success:
             await send_text_message(event, f"❌ 生成失败：{result}")
@@ -145,6 +151,11 @@ class Main(Star):
             await send_text_message(event, "用法：/nai0 1girl, hatsune miku, smile")
             return
 
+        await send_text_message(event, random.choice([
+            "了解了解～把你的想象交给我吧，我会把它变成现实的！",
+            "嘿嘿～这个委托听起来很有趣！数据加载中……生成启动！",
+            "指令确认！爱丽数码绘画模式全开，马上为你调配最棒的色彩！",
+        ]))
         success, result = await self.image_service.generate_and_send(event, session, tags)
         if not success:
             await send_text_message(event, f"❌ 生成失败：{result}")

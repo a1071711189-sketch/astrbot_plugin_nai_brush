@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 PLUGIN_NAME = "astrbot_plugin_nai_pic"
-DEFAULT_NAI_ENDPOINT = "/generate"
+DEFAULT_NAI_ENDPOINT = "/ai/generate-image"
 DEFAULT_TIMEOUT_SECONDS = 120
 DEFAULT_NEGATIVE_FILTER_TAG = "{{{{{nsfw}}}}}"
 MIN_RECOMMENDED_ARTIST_POST_COUNT = 100

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 from collections import Counter
+import json
+import random
 import re
 from typing import Any
 
@@ -41,6 +43,7 @@ class NaiWebClient:
     ) -> tuple[bool, str]:
         base_url = str(model_config.get("base_url") or "").rstrip("/")
         if not base_url:
+            logger.error("[nai_pic] generate_image: base_url 未配置")
             return False, "base_url 未配置"
 
         endpoint = str(model_config.get("nai_endpoint") or DEFAULT_NAI_ENDPOINT)
@@ -49,64 +52,138 @@ class NaiWebClient:
 
         prompt_add = str(model_config.get("custom_prompt_add") or "").strip()
         full_prompt = f"{prompt_add}, {prompt}" if prompt_add else prompt
+
+        artist_prompt = str(model_config.get("nai_artist_prompt") or "").strip()
+        if artist_prompt:
+            full_prompt = f"{artist_prompt}, {full_prompt}"
+
         token = str(model_config.get("api_key") or "").strip()
         if token.lower().startswith("bearer "):
             token = token.split(" ", 1)[1]
 
-        params: dict[str, Any] = {
-            "tag": full_prompt,
-            "model": model_config.get("default_model", "nai-diffusion-4-5-full"),
-        }
-        if token:
-            params["token"] = token
-        if artist_prompt := str(model_config.get("nai_artist_prompt") or "").strip():
-            params["artist"] = artist_prompt
-        if negative := str(model_config.get("negative_prompt_add") or "").strip():
-            params["negative"] = negative
-        if sampler := str(model_config.get("sampler") or "").strip():
-            params["sampler"] = sampler
-        if (steps := model_config.get("num_inference_steps")) is not None:
-            params["steps"] = steps
-        if (scale := model_config.get("guidance_scale")) is not None:
-            params["scale"] = scale
-        if (cfg_value := model_config.get("nai_cfg")) is not None:
-            params["cfg"] = cfg_value
-        if noise_schedule := str(
-            model_config.get("noise_schedule") or model_config.get("nai_noise_schedule") or ""
-        ).strip():
-            params["noise_schedule"] = noise_schedule
-        if (nocache := model_config.get("nai_nocache")) is not None:
-            params["nocache"] = nocache
+        final_size = str(model_config.get("nai_size") or size or "832x1216").strip()
+        try:
+            width_str, height_str = final_size.split("x")
+            width = int(width_str)
+            height = int(height_str)
+        except (ValueError, AttributeError):
+            width, height = 832, 1216
 
-        final_size = str(model_config.get("nai_size") or size or "").strip()
-        if final_size:
-            params["size"] = final_size
+        negative = str(model_config.get("negative_prompt_add") or "").strip()
+        sampler = str(model_config.get("sampler") or "k_euler_ancestral").strip()
+        steps = model_config.get("num_inference_steps", 28)
+
+        cfg_value = model_config.get("nai_cfg")
+        if cfg_value is not None and float(cfg_value) != 0:
+            scale = float(cfg_value)
+        else:
+            scale = float(model_config.get("guidance_scale", 5.0) or 5.0)
+
+        noise_schedule = str(
+            model_config.get("noise_schedule") or model_config.get("nai_noise_schedule") or "karras"
+        ).strip()
+
+        model_name = model_config.get("default_model", "nai-diffusion-4-5-full")
+
+        parameters: dict[str, Any] = {
+            "width": width,
+            "height": height,
+            "sampler": sampler,
+            "steps": steps,
+            "scale": scale,
+            "n_samples": 1,
+            "seed": random.randint(0, 4294967295),
+        }
+        if negative:
+            parameters["negative_prompt"] = negative
+        if noise_schedule:
+            parameters["noise_schedule"] = noise_schedule
 
         extra_params = model_config.get("nai_extra_params") or {}
         if isinstance(extra_params, dict):
             for key, value in extra_params.items():
                 if value not in (None, ""):
-                    params[str(key)] = value
+                    parameters[str(key)] = value
+
+        body: dict[str, Any] = {
+            "input": full_prompt,
+            "model": model_name,
+            "action": "generate",
+            "parameters": parameters,
+        }
 
         url = f"{base_url}{endpoint}"
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        # ── 调试日志 ──
+        logger.info(f"[nai_pic] ======== 生图请求 ========")
+        logger.info(f"[nai_pic] URL: {url}")
+        masked_token = f"{token[:8]}...{token[-4:]}" if token and len(token) > 12 else (token or "(未设置)")
+        logger.info(f"[nai_pic] Token: {masked_token}")
+        logger.info(f"[nai_pic] Model: {model_name}")
+        logger.info(f"[nai_pic] Size: {width}x{height}")
+        logger.info(f"[nai_pic] Prompt: {full_prompt[:200]}{'...' if len(full_prompt) > 200 else ''}")
+        logger.info(f"[nai_pic] Negative: {negative[:200]}{'...' if len(negative) > 200 else ''}")
+        logger.info(f"[nai_pic] Sampler: {sampler}, Steps: {steps}, Scale: {scale}")
+        logger.info(f"[nai_pic] Request Body: {json.dumps(body, ensure_ascii=False)[:500]}")
+
         try:
-            response = await self._client.get(url, params=params)
+            response = await self._client.post(url, json=body, headers=headers)
+            logger.info(f"[nai_pic] 响应状态码: {response.status_code}")
+            logger.info(f"[nai_pic] 响应 Content-Type: {response.headers.get('content-type', 'unknown')}")
+            logger.info(f"[nai_pic] 响应体前500字符: {response.text[:500]}")
             response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            logger.error(f"[nai_pic] HTTP 错误: {exc.response.status_code}, 响应体: {exc.response.text[:500]}")
+            return False, f"网络请求失败:NovelAI服务暂时不可用，请稍后再试。"
         except httpx.HTTPError as exc:
+            logger.error(f"[nai_pic] 网络请求异常: {type(exc).__name__}: {exc}")
             return False, f"网络请求失败:NovelAI服务暂时不可用，请稍后再试。"
 
         content_type = response.headers.get("content-type", "")
         if "application/json" in content_type:
             try:
                 data = response.json()
-            except Exception:
+            except Exception as exc:
+                logger.error(f"[nai_pic] JSON 解析失败: {exc}, 原始内容: {response.text[:500]}")
                 data = {}
-            for key in ("url", "image_url", "image", "data"):
+
+            if "data" in data:
+                inner = data["data"]
+                if isinstance(inner, str) and inner.strip():
+                    logger.info(f"[nai_pic] 获取到图片 (data 字符串, {len(inner)} 字符)")
+                    return True, inner.strip()
+                if isinstance(inner, dict):
+                    for key in ("image", "url", "image_url"):
+                        value = inner.get(key)
+                        if isinstance(value, str) and value.strip():
+                            logger.info(f"[nai_pic] 获取到图片 (data.{key}, {len(value)} 字符)")
+                            return True, value.strip()
+                if isinstance(inner, list) and inner:
+                    first = inner[0]
+                    if isinstance(first, dict):
+                        for key in ("image", "url", "image_url"):
+                            value = first.get(key)
+                            if isinstance(value, str) and value.strip():
+                                logger.info(f"[nai_pic] 获取到图片 (data[0].{key}, {len(value)} 字符)")
+                                return True, value.strip()
+                    elif isinstance(first, str):
+                        logger.info(f"[nai_pic] 获取到图片 (data[0] 字符串, {len(first)} 字符)")
+                        return True, first
+
+            for key in ("image", "url", "image_url"):
                 value = data.get(key)
                 if isinstance(value, str) and value.strip():
+                    logger.info(f"[nai_pic] 获取到图片 (顶层.{key}, {len(value)} 字符)")
                     return True, value.strip()
-            return False, str(data.get("message") or data.get("error") or "未返回图片数据")
 
+            error_msg = str(data.get("message") or data.get("error") or "未返回图片数据")
+            logger.error(f"[nai_pic] 响应中未找到图片数据，完整响应: {json.dumps(data, ensure_ascii=False)[:800]}")
+            return False, error_msg
+
+        logger.info(f"[nai_pic] 非 JSON 响应，按二进制图片处理 ({len(response.content)} bytes)")
         return True, base64.b64encode(response.content).decode("utf-8")
 
 

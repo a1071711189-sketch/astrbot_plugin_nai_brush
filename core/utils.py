@@ -445,4 +445,4 @@ def strip_image_metadata(image_input: str) -> str:
 
     except Exception as e:
         logger.warning(f"[nai_pic] 清除图片 metadata 失败: {e}")
-        return image_input  # 失败时返回原图，不中断流程
+        return ""  # 失败时不发送
