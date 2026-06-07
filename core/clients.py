@@ -108,7 +108,6 @@ class NaiWebClient:
         body: dict[str, Any] = {
             "input": full_prompt,
             "model": model_name,
-            "action": "generate",
             "parameters": parameters,
         }
 
