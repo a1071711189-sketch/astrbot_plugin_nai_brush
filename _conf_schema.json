@@ -62,8 +62,8 @@
       "sampler": {
         "type": "string",
         "description": "采样器",
-        "hint": "默认采样方法，常用值：k_euler_ancestral、k_euler、k_dpmpp_2m 等",
-        "default": "k_euler_ancestral"
+        "hint": "默认采样方法，常用值：Euler Ancestral、Euler、DPM++ 2M 等",
+        "default": "Euler Ancestral"
       },
       "num_inference_steps": {
         "type": "int",
@@ -156,7 +156,7 @@
         "type": "string",
         "description": "V3 采样器",
         "hint": "留空则使用基础配置中的值",
-        "default": "k_euler_ancestral"
+        "default": "Euler Ancestral"
       },
       "num_inference_steps": {
         "type": "int",
@@ -273,7 +273,7 @@
         "type": "string",
         "description": "V4 采样器",
         "hint": "留空则使用基础配置中的值",
-        "default": "k_euler_ancestral"
+        "default": "Euler Ancestral"
       },
       "num_inference_steps": {
         "type": "int",
@@ -390,7 +390,7 @@
         "type": "string",
         "description": "V4.5 采样器",
         "hint": "留空则使用基础配置中的值",
-        "default": "k_euler_ancestral"
+        "default": "Euler Ancestral"
       },
       "num_inference_steps": {
         "type": "int",

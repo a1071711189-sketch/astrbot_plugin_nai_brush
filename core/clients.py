@@ -88,7 +88,9 @@ class NaiWebClient:
 
         model_name = model_config.get("default_model", "nai-diffusion-4-5-full")
 
-        parameters: dict[str, Any] = {
+        body: dict[str, Any] = {
+            "prompt": full_prompt,
+            "model": model_name,
             "width": width,
             "height": height,
             "sampler": sampler,
@@ -96,34 +98,17 @@ class NaiWebClient:
             "scale": scale,
             "n_samples": 1,
             "seed": random.randint(0, 4294967295),
-            "ucPreset": 0,
-            "qualityToggle": True,
-            "sm": False,
-            "sm_dyn": False,
-            "dynamic_thresholding": False,
-            "controlnet_strength": 1,
-            "legacy": False,
-            "add_original_image": False,
-            "cfg_rescale": 0,
-            "uncond_scale": 1.0,
         }
         if negative:
-            parameters["negative_prompt"] = negative
+            body["negative_prompt"] = negative
         if noise_schedule:
-            parameters["noise_schedule"] = noise_schedule
+            body["noise_schedule"] = noise_schedule
 
         extra_params = model_config.get("nai_extra_params") or {}
         if isinstance(extra_params, dict):
             for key, value in extra_params.items():
                 if value not in (None, ""):
-                    parameters[str(key)] = value
-
-        body: dict[str, Any] = {
-            "input": full_prompt,
-            "model": model_name,
-            "action": "generate",
-            "parameters": parameters,
-        }
+                    body[str(key)] = value
 
         url = f"{base_url}{endpoint}"
         headers: dict[str, str] = {"Content-Type": "application/json"}
