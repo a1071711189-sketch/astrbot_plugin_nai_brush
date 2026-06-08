@@ -136,62 +136,74 @@ class NaiWebClient:
         logger.info(f"[nai_pic] Sampler: {sampler}, Steps: {steps}, Scale: {scale}")
         logger.info(f"[nai_pic] 完整 Request Body ({len(json.dumps(body, ensure_ascii=False))} 字符): {json.dumps(body, ensure_ascii=False)}")
 
+        client = self._client
+        if proxy:
+            client = httpx.AsyncClient(
+                proxy=proxy,
+                timeout=httpx.Timeout(connect=30.0, read=180.0, write=30.0, pool=30.0),
+                verify=False,
+                trust_env=True,
+                follow_redirects=True,
+            )
+
         try:
-            response = await self._client.post(url, json=body, headers=headers, proxy=proxy or None)
-            logger.info(f"[nai_pic] 响应状态码: {response.status_code}")
-            logger.info(f"[nai_pic] 响应 Content-Type: {response.headers.get('content-type', 'unknown')}")
-            response.raise_for_status()
-        except httpx.ConnectTimeout:
-            logger.error(f"[nai_pic] 连接超时 (无法建立到 image.novelai.net 的 TCP 连接，可能需要代理)")
-            return False, "无法连接到 NovelAI 服务器，请检查网络或使用代理。"
-        except httpx.ReadTimeout:
-            logger.error(f"[nai_pic] 读取超时 (服务端生成图片时间过长)")
-            return False, "NovelAI 生成超时，请稍后重试。"
-        except httpx.HTTPStatusError as exc:
-            logger.error(f"[nai_pic] HTTP 错误: {exc.response.status_code}, 完整响应: {exc.response.text[:1000]}")
-            return False, "NovelAI服务暂时不可用，请稍后再试。"
-        except httpx.HTTPError as exc:
-            logger.error(f"[nai_pic] 网络请求异常: {type(exc).__name__}: {exc}")
-            return False, "NovelAI服务暂时不可用，请稍后再试。"
-
-        content_type = response.headers.get("content-type", "").lower()
-
-        if "application/json" in content_type:
             try:
-                data = response.json()
-            except Exception as exc:
-                logger.error(f"[nai_pic] JSON 解析失败: {exc}, 原始内容: {response.text}")
-                return False, "无法解析服务器响应"
-            error_msg = str(data.get("message") or data.get("error") or "未知错误")
-            logger.error(f"[nai_pic] 服务器返回错误: {error_msg}, 完整: {json.dumps(data, ensure_ascii=False)[:800]}")
-            return False, error_msg
+                response = await client.post(url, json=body, headers=headers)
+                logger.info(f"[nai_pic] 响应状态码: {response.status_code}")
+                logger.info(f"[nai_pic] 响应 Content-Type: {response.headers.get('content-type', 'unknown')}")
+                response.raise_for_status()
+            except httpx.ConnectTimeout:
+                logger.error(f"[nai_pic] 连接超时 (无法建立到 image.novelai.net 的 TCP 连接，可能需要代理)")
+                return False, "无法连接到 NovelAI 服务器，请检查网络或使用代理。"
+            except httpx.ReadTimeout:
+                logger.error(f"[nai_pic] 读取超时 (服务端生成图片时间过长)")
+                return False, "NovelAI 生成超时，请稍后重试。"
+            except httpx.HTTPStatusError as exc:
+                logger.error(f"[nai_pic] HTTP 错误: {exc.response.status_code}, 完整响应: {exc.response.text[:1000]}")
+                return False, "NovelAI服务暂时不可用，请稍后再试。"
+            except httpx.HTTPError as exc:
+                logger.error(f"[nai_pic] 网络请求异常: {type(exc).__name__}: {exc}")
+                return False, "NovelAI服务暂时不可用，请稍后再试。"
 
-        # 官方 API 返回 ZIP（含 PNG）或纯二进制图片
-        if "zip" in content_type or "octet-stream" in content_type:
-            logger.info(f"[nai_pic] 收到 ZIP 响应 ({len(response.content)} bytes)，提取图片...")
-            try:
-                with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
-                    names = zf.namelist()
-                    logger.info(f"[nai_pic] ZIP 内文件: {names}")
-                    # 取第一个 PNG 文件（通常为 image_0.png）
-                    for name in names:
-                        if name.lower().endswith(".png"):
-                            img_bytes = zf.read(name)
-                            logger.info(f"[nai_pic] 提取 {name} ({len(img_bytes)} bytes)")
+            content_type = response.headers.get("content-type", "").lower()
+
+            if "application/json" in content_type:
+                try:
+                    data = response.json()
+                except Exception as exc:
+                    logger.error(f"[nai_pic] JSON 解析失败: {exc}, 原始内容: {response.text}")
+                    return False, "无法解析服务器响应"
+                error_msg = str(data.get("message") or data.get("error") or "未知错误")
+                logger.error(f"[nai_pic] 服务器返回错误: {error_msg}, 完整: {json.dumps(data, ensure_ascii=False)[:800]}")
+                return False, error_msg
+
+            # 官方 API 返回 ZIP（含 PNG）或纯二进制图片
+            if "zip" in content_type or "octet-stream" in content_type:
+                logger.info(f"[nai_pic] 收到 ZIP 响应 ({len(response.content)} bytes)，提取图片...")
+                try:
+                    with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+                        names = zf.namelist()
+                        logger.info(f"[nai_pic] ZIP 内文件: {names}")
+                        for name in names:
+                            if name.lower().endswith(".png"):
+                                img_bytes = zf.read(name)
+                                logger.info(f"[nai_pic] 提取 {name} ({len(img_bytes)} bytes)")
+                                return True, base64.b64encode(img_bytes).decode("utf-8")
+                        if names:
+                            img_bytes = zf.read(names[0])
+                            logger.info(f"[nai_pic] 提取 {names[0]} ({len(img_bytes)} bytes)")
                             return True, base64.b64encode(img_bytes).decode("utf-8")
-                    # 没有 PNG 则取第一个文件
-                    if names:
-                        img_bytes = zf.read(names[0])
-                        logger.info(f"[nai_pic] 提取 {names[0]} ({len(img_bytes)} bytes)")
-                        return True, base64.b64encode(img_bytes).decode("utf-8")
-                    return False, "ZIP 中没有图片文件"
-            except Exception as exc:
-                logger.error(f"[nai_pic] ZIP 解压失败: {exc}")
-                return False, "图片数据解压失败"
+                        return False, "ZIP 中没有图片文件"
+                except Exception as exc:
+                    logger.error(f"[nai_pic] ZIP 解压失败: {exc}")
+                    return False, "图片数据解压失败"
 
-        # 其他二进制格式（如 image/png 等），直接当图片
-        logger.info(f"[nai_pic] 收到二进制图片 ({len(response.content)} bytes)")
-        return True, base64.b64encode(response.content).decode("utf-8")
+            # 其他二进制格式（如 image/png 等），直接当图片
+            logger.info(f"[nai_pic] 收到二进制图片 ({len(response.content)} bytes)")
+            return True, base64.b64encode(response.content).decode("utf-8")
+        finally:
+            if proxy:
+                await client.aclose()
 
 
 class DanbooruClient:
