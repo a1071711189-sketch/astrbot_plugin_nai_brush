@@ -96,6 +96,16 @@ class NaiWebClient:
             "scale": scale,
             "n_samples": 1,
             "seed": random.randint(0, 4294967295),
+            "ucPreset": 0,
+            "qualityToggle": True,
+            "sm": False,
+            "sm_dyn": False,
+            "dynamic_thresholding": False,
+            "controlnet_strength": 1,
+            "legacy": False,
+            "add_original_image": False,
+            "cfg_rescale": 0,
+            "uncond_scale": 1.0,
         }
         if negative:
             parameters["negative_prompt"] = negative
