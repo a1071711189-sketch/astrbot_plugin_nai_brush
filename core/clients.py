@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import base64
 from collections import Counter
+import io
 import json
 import random
 import re
 from typing import Any
+import zipfile
 
 import httpx
 
@@ -108,6 +110,7 @@ class NaiWebClient:
         body: dict[str, Any] = {
             "input": full_prompt,
             "model": model_name,
+            "action": "generate",
             "parameters": parameters,
         }
 
@@ -133,57 +136,51 @@ class NaiWebClient:
             response = await self._client.post(url, json=body, headers=headers)
             logger.info(f"[nai_pic] 响应状态码: {response.status_code}")
             logger.info(f"[nai_pic] 响应 Content-Type: {response.headers.get('content-type', 'unknown')}")
-            logger.info(f"[nai_pic] 完整响应体: {response.text}")
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            logger.error(f"[nai_pic] HTTP 错误: {exc.response.status_code}, 完整响应: {exc.response.text}")
-            return False, f"网络请求失败:NovelAI服务暂时不可用，请稍后再试。"
+            logger.error(f"[nai_pic] HTTP 错误: {exc.response.status_code}, 完整响应: {exc.response.text[:1000]}")
+            return False, "NovelAI服务暂时不可用，请稍后再试。"
         except httpx.HTTPError as exc:
             logger.error(f"[nai_pic] 网络请求异常: {type(exc).__name__}: {exc}")
-            return False, f"网络请求失败:NovelAI服务暂时不可用，请稍后再试。"
+            return False, "NovelAI服务暂时不可用，请稍后再试。"
 
-        content_type = response.headers.get("content-type", "")
+        content_type = response.headers.get("content-type", "").lower()
+
         if "application/json" in content_type:
             try:
                 data = response.json()
             except Exception as exc:
                 logger.error(f"[nai_pic] JSON 解析失败: {exc}, 原始内容: {response.text}")
-                data = {}
-
-            if "data" in data:
-                inner = data["data"]
-                if isinstance(inner, str) and inner.strip():
-                    logger.info(f"[nai_pic] 获取到图片 (data 字符串, {len(inner)} 字符)")
-                    return True, inner.strip()
-                if isinstance(inner, dict):
-                    for key in ("image", "url", "image_url"):
-                        value = inner.get(key)
-                        if isinstance(value, str) and value.strip():
-                            logger.info(f"[nai_pic] 获取到图片 (data.{key}, {len(value)} 字符)")
-                            return True, value.strip()
-                if isinstance(inner, list) and inner:
-                    first = inner[0]
-                    if isinstance(first, dict):
-                        for key in ("image", "url", "image_url"):
-                            value = first.get(key)
-                            if isinstance(value, str) and value.strip():
-                                logger.info(f"[nai_pic] 获取到图片 (data[0].{key}, {len(value)} 字符)")
-                                return True, value.strip()
-                    elif isinstance(first, str):
-                        logger.info(f"[nai_pic] 获取到图片 (data[0] 字符串, {len(first)} 字符)")
-                        return True, first
-
-            for key in ("image", "url", "image_url"):
-                value = data.get(key)
-                if isinstance(value, str) and value.strip():
-                    logger.info(f"[nai_pic] 获取到图片 (顶层.{key}, {len(value)} 字符)")
-                    return True, value.strip()
-
-            error_msg = str(data.get("message") or data.get("error") or "未返回图片数据")
-            logger.error(f"[nai_pic] 响应中未找到图片数据，完整响应: {json.dumps(data, ensure_ascii=False)}")
+                return False, "无法解析服务器响应"
+            error_msg = str(data.get("message") or data.get("error") or "未知错误")
+            logger.error(f"[nai_pic] 服务器返回错误: {error_msg}, 完整: {json.dumps(data, ensure_ascii=False)[:800]}")
             return False, error_msg
 
-        logger.info(f"[nai_pic] 非 JSON 响应，按二进制图片处理 ({len(response.content)} bytes)")
+        # 官方 API 返回 ZIP（含 PNG）或纯二进制图片
+        if "zip" in content_type or "octet-stream" in content_type:
+            logger.info(f"[nai_pic] 收到 ZIP 响应 ({len(response.content)} bytes)，提取图片...")
+            try:
+                with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+                    names = zf.namelist()
+                    logger.info(f"[nai_pic] ZIP 内文件: {names}")
+                    # 取第一个 PNG 文件（通常为 image_0.png）
+                    for name in names:
+                        if name.lower().endswith(".png"):
+                            img_bytes = zf.read(name)
+                            logger.info(f"[nai_pic] 提取 {name} ({len(img_bytes)} bytes)")
+                            return True, base64.b64encode(img_bytes).decode("utf-8")
+                    # 没有 PNG 则取第一个文件
+                    if names:
+                        img_bytes = zf.read(names[0])
+                        logger.info(f"[nai_pic] 提取 {names[0]} ({len(img_bytes)} bytes)")
+                        return True, base64.b64encode(img_bytes).decode("utf-8")
+                    return False, "ZIP 中没有图片文件"
+            except Exception as exc:
+                logger.error(f"[nai_pic] ZIP 解压失败: {exc}")
+                return False, "图片数据解压失败"
+
+        # 其他二进制格式（如 image/png 等），直接当图片
+        logger.info(f"[nai_pic] 收到二进制图片 ({len(response.content)} bytes)")
         return True, base64.b64encode(response.content).decode("utf-8")
 
 
