@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from collections import Counter
 import io
@@ -27,7 +28,7 @@ DANBOORU_API_BASE = "https://danbooru.donmai.us"
 class NaiWebClient:
     def __init__(self) -> None:
         self._client = httpx.AsyncClient(
-            timeout=DEFAULT_TIMEOUT_SECONDS,
+            timeout=httpx.Timeout(connect=30.0, read=180.0, write=30.0, pool=30.0),
             verify=False,
             trust_env=True,
             follow_redirects=True,
@@ -119,10 +120,13 @@ class NaiWebClient:
         if token:
             headers["Authorization"] = f"Bearer {token}"
 
+        proxy = str(model_config.get("proxy") or "").strip()
+
         # ── 调试日志 ──
         logger.info(f"[nai_pic] ======== 生图请求 ========")
         logger.info(f"[nai_pic] 完整请求 URL: {url}")
         logger.info(f"[nai_pic] 请求方法: POST")
+        logger.info(f"[nai_pic] 代理: {proxy or '(未设置)'}")
         masked_token = f"{token[:8]}...{token[-4:]}" if token and len(token) > 12 else (token or "(未设置)")
         logger.info(f"[nai_pic] Token: {masked_token}")
         logger.info(f"[nai_pic] Model: {model_name}")
@@ -133,10 +137,16 @@ class NaiWebClient:
         logger.info(f"[nai_pic] 完整 Request Body ({len(json.dumps(body, ensure_ascii=False))} 字符): {json.dumps(body, ensure_ascii=False)}")
 
         try:
-            response = await self._client.post(url, json=body, headers=headers)
+            response = await self._client.post(url, json=body, headers=headers, proxy=proxy or None)
             logger.info(f"[nai_pic] 响应状态码: {response.status_code}")
             logger.info(f"[nai_pic] 响应 Content-Type: {response.headers.get('content-type', 'unknown')}")
             response.raise_for_status()
+        except httpx.ConnectTimeout:
+            logger.error(f"[nai_pic] 连接超时 (无法建立到 image.novelai.net 的 TCP 连接，可能需要代理)")
+            return False, "无法连接到 NovelAI 服务器，请检查网络或使用代理。"
+        except httpx.ReadTimeout:
+            logger.error(f"[nai_pic] 读取超时 (服务端生成图片时间过长)")
+            return False, "NovelAI 生成超时，请稍后重试。"
         except httpx.HTTPStatusError as exc:
             logger.error(f"[nai_pic] HTTP 错误: {exc.response.status_code}, 完整响应: {exc.response.text[:1000]}")
             return False, "NovelAI服务暂时不可用，请稍后再试。"

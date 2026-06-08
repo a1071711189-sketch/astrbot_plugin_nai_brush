@@ -16,6 +16,12 @@
         "hint": "部分 API 端点需要 Token 鉴权，不需要时可留空",
         "default": ""
       },
+      "proxy": {
+        "type": "string",
+        "description": "HTTP 代理地址",
+        "hint": "如 http://127.0.0.1:7890，用于访问被墙的 API，留空则不使用代理",
+        "default": ""
+      },
       "nai_endpoint": {
         "type": "string",
         "description": "接口路径",
